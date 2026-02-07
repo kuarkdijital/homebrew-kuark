@@ -14,101 +14,150 @@ class KuarkSystem < Formula
 
     # Make hooks executable
     (prefix/"hooks").glob("*.sh").each { |f| f.chmod 0755 }
-  end
 
-  def post_install
-    kuark_home = Pathname.new(Dir.home)/".kuark"
-    claude_home = Pathname.new(Dir.home)/".claude"
+    # Create the setup script in bin/
+    (bin/"kuark-setup").write <<~EOS
+      #!/bin/bash
+      set -e
 
-    # Create symlink ~/.kuark -> Homebrew prefix
-    if kuark_home.exist?
-      if kuark_home.symlink?
-        kuark_home.delete
-      else
-        kuark_home.rename("#{kuark_home}.backup.#{Time.now.to_i}")
-        opoo "Existing ~/.kuark backed up to ~/.kuark.backup.*"
-      end
-    end
-    kuark_home.make_symlink(prefix)
+      KUARK_PREFIX="#{opt_prefix}"
+      KUARK_HOME="$HOME/.kuark"
+      CLAUDE_HOME="$HOME/.claude"
 
-    # Ensure Claude directories exist
-    claude_home.mkpath
-    (claude_home/"memory"/"kuark").mkpath
+      GREEN='\\033[0;32m'
+      CYAN='\\033[0;36m'
+      YELLOW='\\033[1;33m'
+      NC='\\033[0m'
 
-    # Inject CLAUDE.md
-    marker_start = "<!-- KUARK-SYSTEM-START -->"
-    marker_end = "<!-- KUARK-SYSTEM-END -->"
-    claude_md = claude_home/"CLAUDE.md"
-    kuark_claude_md = prefix/"CLAUDE.md"
+      echo -e "${CYAN}[KUARK]${NC} Setting up Kuark System..."
 
-    if kuark_claude_md.exist?
-      kuark_section = <<~EOS
-        #{marker_start}
-        # Kuark Universal Development System (Auto-injected via Homebrew)
-        # Source: ~/.kuark/CLAUDE.md | Do not edit between markers
-        # Update: brew upgrade kuark-system | Remove: brew uninstall kuark-system
+      # 1. Symlink ~/.kuark -> Homebrew prefix
+      if [ -L "$KUARK_HOME" ]; then
+          rm "$KUARK_HOME"
+      elif [ -d "$KUARK_HOME" ]; then
+          BACKUP="$KUARK_HOME.backup.$(date +%s)"
+          mv "$KUARK_HOME" "$BACKUP"
+          echo -e "${YELLOW}[WARN]${NC} Existing ~/.kuark backed up to $BACKUP"
+      fi
+      ln -sfn "$KUARK_PREFIX" "$KUARK_HOME"
+      echo -e "${GREEN}[OK]${NC} ~/.kuark -> $KUARK_PREFIX"
 
-        #{kuark_claude_md.read}
-        #{marker_end}
-      EOS
+      # 2. Ensure Claude directories
+      mkdir -p "$CLAUDE_HOME"
+      mkdir -p "$CLAUDE_HOME/memory/kuark"
 
-      if claude_md.exist?
-        content = claude_md.read
-        if content.include?(marker_start)
-          # Replace existing section
-          content.sub!(/#{Regexp.escape(marker_start)}.*?#{Regexp.escape(marker_end)}/m, kuark_section.strip)
-          claude_md.write(content)
-        else
-          claude_md.append_lines(["", kuark_section])
-        end
-      else
-        claude_md.write(kuark_section)
-      end
-    end
+      # 3. Inject CLAUDE.md
+      MARKER_START="<!-- KUARK-SYSTEM-START -->"
+      MARKER_END="<!-- KUARK-SYSTEM-END -->"
+      CLAUDE_MD="$CLAUDE_HOME/CLAUDE.md"
+      KUARK_CLAUDE_MD="$KUARK_PREFIX/CLAUDE.md"
 
-    # Merge hooks into settings.json
-    hooks_source = prefix/".claude-hooks.json"
-    settings_file = claude_home/"settings.json"
+      if [ -f "$KUARK_CLAUDE_MD" ]; then
+          KUARK_SECTION="$MARKER_START
+      # Kuark Universal Development System (Auto-injected via Homebrew)
+      # Source: ~/.kuark/CLAUDE.md | Do not edit between markers
+      # Update: brew upgrade kuark-system && kuark-setup | Remove: brew uninstall kuark-system
 
-    if hooks_source.exist?
-      if settings_file.exist?
-        system "jq", "-s",
-          '(.[0] // {}) as $e | (.[1] // {}) as $k |
-           $e * { hooks: (($e.hooks // {}) as $eh | ($k.hooks // {}) as $kh |
-           (($eh | keys) + ($kh | keys)) | unique | map(. as $key |
-           (($eh[$key] // []) + ($kh[$key] // [])) | {($key): .}) | add // {}) }',
-          settings_file, hooks_source,
-          out: "#{settings_file}.tmp"
-        if File.size?("#{settings_file}.tmp")
-          FileUtils.mv("#{settings_file}.tmp", settings_file)
-        else
-          FileUtils.rm_f("#{settings_file}.tmp")
-        end
-      else
-        system "jq", '{ hooks: .hooks }', hooks_source, out: settings_file.to_s
-      end
-    end
+      $(cat "$KUARK_CLAUDE_MD")
+      $MARKER_END"
 
-    ohai "Kuark System installed! Start Claude Code in any project."
-    ohai "Say 'proje baslat' to begin a new project."
+          if [ -f "$CLAUDE_MD" ]; then
+              if grep -q "$MARKER_START" "$CLAUDE_MD" 2>/dev/null; then
+                  awk -v start="$MARKER_START" -v replacement="$KUARK_SECTION" '
+                      $0 ~ start { printing=0; print replacement; next }
+                      /<!-- KUARK-SYSTEM-END -->/ { printing=1; next }
+                      printing!=0 { print }
+                      BEGIN { printing=1 }
+                  ' "$CLAUDE_MD" > "$CLAUDE_MD.tmp"
+                  mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
+                  echo -e "${GREEN}[OK]${NC} CLAUDE.md updated (existing section replaced)"
+              else
+                  echo "" >> "$CLAUDE_MD"
+                  echo "$KUARK_SECTION" >> "$CLAUDE_MD"
+                  echo -e "${GREEN}[OK]${NC} CLAUDE.md updated (section appended)"
+              fi
+          else
+              echo "$KUARK_SECTION" > "$CLAUDE_MD"
+              echo -e "${GREEN}[OK]${NC} CLAUDE.md created"
+          fi
+      fi
+
+      # 4. Merge hooks into settings.json
+      HOOKS_SOURCE="$KUARK_PREFIX/.claude-hooks.json"
+      SETTINGS_FILE="$CLAUDE_HOME/settings.json"
+
+      if [ -f "$HOOKS_SOURCE" ]; then
+          if [ -f "$SETTINGS_FILE" ]; then
+              if grep -q "kuark" "$SETTINGS_FILE" 2>/dev/null; then
+                  CLEANED=$(jq '
+                      if .hooks then
+                          .hooks |= with_entries(
+                              .value |= map(
+                                  .hooks |= map(select(.command | test("kuark") | not))
+                              ) | map(select(.hooks | length > 0))
+                          )
+                      else . end
+                  ' "$SETTINGS_FILE" 2>/dev/null || cat "$SETTINGS_FILE")
+                  echo "$CLEANED" > "$SETTINGS_FILE.tmp"
+                  mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+              fi
+
+              jq -s '
+                  (.[0] // {}) as $e | (.[1] // {}) as $k |
+                  $e * { hooks: (($e.hooks // {}) as $eh | ($k.hooks // {}) as $kh |
+                  (($eh | keys) + ($kh | keys)) | unique | map(. as $key |
+                  (($eh[$key] // []) + ($kh[$key] // [])) | {($key): .}) | add // {}) }
+              ' "$SETTINGS_FILE" "$HOOKS_SOURCE" > "$SETTINGS_FILE.tmp" 2>/dev/null
+
+              if [ -s "$SETTINGS_FILE.tmp" ]; then
+                  mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+                  echo -e "${GREEN}[OK]${NC} Hooks merged into settings.json"
+              else
+                  rm -f "$SETTINGS_FILE.tmp"
+                  jq --argjson hooks "$(jq '.hooks' "$HOOKS_SOURCE")" '.hooks = $hooks' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" 2>/dev/null
+                  mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+                  echo -e "${GREEN}[OK]${NC} Hooks added to settings.json"
+              fi
+          else
+              echo '{}' | jq --argjson hooks "$(jq '.hooks' "$HOOKS_SOURCE")" '. + {hooks: $hooks}' > "$SETTINGS_FILE"
+              echo -e "${GREEN}[OK]${NC} settings.json created with hooks"
+          fi
+      fi
+
+      echo ""
+      echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+      echo -e "${GREEN}[KUARK]${NC} Setup complete!"
+      echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+      echo ""
+      echo -e "  ${CYAN}Agents:${NC}   16 specialized AI agents"
+      echo -e "  ${CYAN}Skills:${NC}   10 skill modules"
+      echo -e "  ${CYAN}Hooks:${NC}    SessionStart, PreToolUse, PostToolUse, Stop"
+      echo ""
+      echo -e "  Start Claude Code in any project and say ${YELLOW}'proje baslat'${NC}"
+      echo ""
+    EOS
   end
 
   def caveats
     <<~EOS
-      Kuark Universal Development System has been installed.
+      Run the setup command to complete installation:
 
-      ~/.kuark -> #{prefix}
+        kuark-setup
 
-      Usage:
-        Start Claude Code in any project directory.
-        The swarm system will auto-initialize.
-        Say 'proje baslat' to begin a new project.
+      This will:
+        - Link ~/.kuark to the Homebrew installation
+        - Inject Kuark directives into ~/.claude/CLAUDE.md
+        - Configure Claude Code hooks in ~/.claude/settings.json
+
+      After setup, start Claude Code in any project directory.
+      Say 'proje baslat' to begin a new project.
 
       16 AI agents | 10 skill modules | Swarm protocol
 
-      Manual commands:
+      Commands:
+        Setup:   kuark-setup
         Status:  bash ~/.kuark/hooks/swarm.sh status
-        Update:  brew upgrade kuark-system
+        Update:  brew upgrade kuark-system && kuark-setup
         Remove:  brew uninstall kuark-system
     EOS
   end
@@ -119,6 +168,7 @@ class KuarkSystem < Formula
     assert_predicate prefix/"agents"/"ui-ux-designer"/"SKILL.md", :exist?
     assert_predicate prefix/"hooks"/"swarm.sh", :exist?
     assert_predicate prefix/"hooks"/"init.sh", :exist?
+    assert_predicate bin/"kuark-setup", :exist?
 
     # Verify agent count
     agent_count = Dir.glob(prefix/"agents"/"*").count { |f| File.directory?(f) }
