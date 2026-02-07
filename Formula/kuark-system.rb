@@ -143,6 +143,7 @@ open(sys.argv[3], 'w').write(content[:i] + section + content[j:])
       echo -e "  Start Claude Code in any project and say ${YELLOW}'proje baslat'${NC}"
       echo ""
     EOS
+    (bin/"kuark-setup").chmod 0755
   end
 
   def caveats
