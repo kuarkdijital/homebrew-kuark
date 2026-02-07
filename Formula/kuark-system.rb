@@ -52,35 +52,40 @@ class KuarkSystem < Formula
       CLAUDE_MD="$CLAUDE_HOME/CLAUDE.md"
       KUARK_CLAUDE_MD="$KUARK_PREFIX/CLAUDE.md"
 
+      # Build the kuark section in a temp file to avoid awk multi-line issues
+      SECTION_TMP=$(mktemp)
+      {
+          echo "$MARKER_START"
+          echo "# Kuark Universal Development System (Auto-injected via Homebrew)"
+          echo "# Source: ~/.kuark/CLAUDE.md | Do not edit between markers"
+          echo "# Update: brew upgrade kuark-system && kuark-setup | Remove: brew uninstall kuark-system"
+          echo ""
+          cat "$KUARK_CLAUDE_MD"
+          echo "$MARKER_END"
+      } > "$SECTION_TMP"
+
       if [ -f "$KUARK_CLAUDE_MD" ]; then
-          KUARK_SECTION="$MARKER_START
-      # Kuark Universal Development System (Auto-injected via Homebrew)
-      # Source: ~/.kuark/CLAUDE.md | Do not edit between markers
-      # Update: brew upgrade kuark-system && kuark-setup | Remove: brew uninstall kuark-system
-
-      $(cat "$KUARK_CLAUDE_MD")
-      $MARKER_END"
-
           if [ -f "$CLAUDE_MD" ]; then
               if grep -q "$MARKER_START" "$CLAUDE_MD" 2>/dev/null; then
-                  awk -v start="$MARKER_START" -v replacement="$KUARK_SECTION" '
-                      $0 ~ start { printing=0; print replacement; next }
-                      /<!-- KUARK-SYSTEM-END -->/ { printing=1; next }
-                      printing!=0 { print }
-                      BEGIN { printing=1 }
-                  ' "$CLAUDE_MD" > "$CLAUDE_MD.tmp"
+                  # Extract before and after marker sections, insert new content
+                  {
+                      sed -n "1,/^$MARKER_START/{ /^$MARKER_START/!p; }" "$CLAUDE_MD"
+                      cat "$SECTION_TMP"
+                      sed -n "/^$MARKER_END/,\${ /^$MARKER_END/!p; }" "$CLAUDE_MD"
+                  } > "$CLAUDE_MD.tmp"
                   mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
                   echo -e "${GREEN}[OK]${NC} CLAUDE.md updated (existing section replaced)"
               else
                   echo "" >> "$CLAUDE_MD"
-                  echo "$KUARK_SECTION" >> "$CLAUDE_MD"
+                  cat "$SECTION_TMP" >> "$CLAUDE_MD"
                   echo -e "${GREEN}[OK]${NC} CLAUDE.md updated (section appended)"
               fi
           else
-              echo "$KUARK_SECTION" > "$CLAUDE_MD"
+              cp "$SECTION_TMP" "$CLAUDE_MD"
               echo -e "${GREEN}[OK]${NC} CLAUDE.md created"
           fi
       fi
+      rm -f "$SECTION_TMP"
 
       # 4. Merge hooks into settings.json
       HOOKS_SOURCE="$KUARK_PREFIX/.claude-hooks.json"
