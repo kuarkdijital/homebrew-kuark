@@ -2,7 +2,7 @@ class KuarkSystem < Formula
   desc "Multi-agent AI development system for Claude Code"
   homepage "https://github.com/kuarkdijital/kuark-system"
   url "https://github.com/kuarkdijital/kuark-system/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "c94717580e024ee7a1bd4d5b61669a0e5246d9d1690236966499c4073df9a5bd"
+  sha256 "76e65ad370318d7e89d8d08d90c3f55ce97561c934547ca20f7c6fd9925507ad"
   license "MIT"
 
   depends_on "jq"
