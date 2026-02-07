@@ -8,15 +8,15 @@ class KuarkSystem < Formula
   depends_on "jq"
 
   def install
-    # Install all kuark-system files to the prefix
-    prefix.install Dir["*"]
+    # Install bin scripts first (before prefix.install moves them)
+    bin.install "bin/kuark-setup"
+
+    # Install remaining files to prefix (excluding bin/ which is already handled)
+    prefix.install Dir["*"].reject { |f| f == "bin" }
     prefix.install Dir[".*"].reject { |f| %w[. .. .git .github].include?(File.basename(f)) }
 
     # Make hooks executable
     (prefix/"hooks").glob("*.sh").each { |f| f.chmod 0755 }
-
-    # Install bin/kuark-setup from repo (already has correct shebang + executable)
-    bin.install prefix/"bin"/"kuark-setup"
   end
 
   def caveats
