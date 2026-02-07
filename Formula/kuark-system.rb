@@ -67,13 +67,15 @@ class KuarkSystem < Formula
       if [ -f "$KUARK_CLAUDE_MD" ]; then
           if [ -f "$CLAUDE_MD" ]; then
               if grep -q "$MARKER_START" "$CLAUDE_MD" 2>/dev/null; then
-                  # Extract before and after marker sections, insert new content
-                  {
-                      sed -n "1,/^$MARKER_START/{ /^$MARKER_START/!p; }" "$CLAUDE_MD"
-                      cat "$SECTION_TMP"
-                      sed -n "/^$MARKER_END/,\${ /^$MARKER_END/!p; }" "$CLAUDE_MD"
-                  } > "$CLAUDE_MD.tmp"
-                  mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
+                  python3 -c "
+import sys
+ms, me = sys.argv[1], sys.argv[2]
+content = open(sys.argv[3]).read()
+section = open(sys.argv[4]).read()
+i = content.index(ms)
+j = content.index(me) + len(me)
+open(sys.argv[3], 'w').write(content[:i] + section + content[j:])
+" "$MARKER_START" "$MARKER_END" "$CLAUDE_MD" "$SECTION_TMP"
                   echo -e "${GREEN}[OK]${NC} CLAUDE.md updated (existing section replaced)"
               else
                   echo "" >> "$CLAUDE_MD"
