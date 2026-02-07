@@ -1,8 +1,8 @@
 class KuarkSystem < Formula
   desc "Multi-agent AI development system for Claude Code"
   homepage "https://github.com/kuarkdijital/kuark-system"
-  url "https://github.com/kuarkdijital/kuark-system/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "289facb9f563be10572268a450ca6857b2c1d367336caa68e0f9b7e86bca6a85"
+  url "https://github.com/kuarkdijital/kuark-system/archive/refs/tags/v1.1.0.tar.gz"
+  sha256 "c19040cdb8d64bff01647179eed5e03895225c99def88f8fa6184ac4a2d7bda9"
   license "MIT"
 
   depends_on "jq"
@@ -33,7 +33,7 @@ class KuarkSystem < Formula
       After setup, start Claude Code in any project directory.
       Say 'proje baslat' to begin a new project.
 
-      16 AI agents | 10 skill modules | Swarm protocol
+      16 AI agents | 11 skill modules | Swarm protocol
 
       Commands:
         Setup:   kuark-setup
@@ -47,6 +47,7 @@ class KuarkSystem < Formula
     assert_predicate prefix/"CLAUDE.md", :exist?
     assert_predicate prefix/"agents"/"product-owner"/"SKILL.md", :exist?
     assert_predicate prefix/"agents"/"ui-ux-designer"/"SKILL.md", :exist?
+    assert_predicate prefix/"skills"/"pencil"/"MODULE.md", :exist?
     assert_predicate prefix/"hooks"/"swarm.sh", :exist?
     assert_predicate prefix/"hooks"/"init.sh", :exist?
     assert_predicate bin/"kuark-setup", :exist?
